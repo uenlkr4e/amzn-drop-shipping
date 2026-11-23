@@ -29,6 +29,20 @@ describe('parseEnv(apiEnvSchema)', () => {
     expect(env.SENTRY_DSN).toBeUndefined();
   });
 
+  it('treats empty strings as unset so defaults apply', () => {
+    const env = parseEnv(apiEnvSchema, {
+      ...validApi,
+      PORT: '',
+      APP_ENV: '',
+      LOG_LEVEL: '',
+      REQUIRE_2FA: '',
+    });
+    expect(env.PORT).toBe(3000);
+    expect(env.APP_ENV).toBe('development');
+    expect(env.LOG_LEVEL).toBe('info');
+    expect(env.REQUIRE_2FA).toBe(true);
+  });
+
   it('names every missing or invalid variable in one error', () => {
     const { DATABASE_URL: _db, ...rest } = validApi;
     const call = () => parseEnv(apiEnvSchema, { ...rest, BETTER_AUTH_SECRET: 'short' });

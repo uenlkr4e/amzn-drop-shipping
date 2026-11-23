@@ -56,7 +56,9 @@ export function parseEnv<T extends z.ZodType>(
   schema: T,
   source: Record<string, string | undefined> = process.env,
 ): z.infer<T> {
-  const result = schema.safeParse(source);
+  // Platforms such as Railway/Docker can inject empty variables; treat them as unset.
+  const input = Object.fromEntries(Object.entries(source).filter(([, value]) => value !== ''));
+  const result = schema.safeParse(input);
   if (!result.success) {
     const lines = result.error.issues.map(
       (issue) => `  ${issue.path.join('.') || '(root)'}: ${issue.message}`,
