@@ -5,8 +5,9 @@
 **Document purpose:** Consolidated implementation brief for the
 development team or AI coding agent.\
 **Target marketplaces:** Amazon US, Canada, and Mexico.\
-**Primary technology direction:** React/Next.js, Node.js/TypeScript,
-NestJS with Fastify, PostgreSQL, Redis/BullMQ, deployed on Railway.\
+**Primary technology direction:** React SPA (Vite), Node.js/TypeScript,
+NestJS with Fastify, PostgreSQL with Drizzle, Redis/BullMQ, deployed on
+Railway.\
 **Amazon product research provider:** Keepa (the original request said
 "Keap"; this plan assumes **Keepa**).\
 **Revision 2 (2026-11-23):** Reconciled against the client requirements
@@ -637,12 +638,20 @@ the Keepa token budget goes to the products that matter.
 
 ### 4.1 Frontend
 
--   React
--   Next.js
+-   React single-page application built with Vite
 -   TypeScript
+-   TanStack Router for type-safe routing
+-   TanStack Query for server-state management
 -   Tailwind CSS
 -   shadcn/ui
--   TanStack Query for server-state management
+
+**Frontend decision:** Use a **Vite + React SPA**, not Next.js. The
+dashboard is an internal tool for authenticated operators: it needs no
+SEO and gains little from server rendering. A static SPA calling the
+NestJS API keeps all business logic and authorization in one backend,
+avoids a second server runtime, and is deployed as static files. Generate
+a typed API client from the API's OpenAPI document so frontend and
+backend contracts stay in sync.
 
 ### 4.2 Backend/API
 
@@ -658,15 +667,41 @@ provides application structure, modules, dependency injection, guards,
 validation patterns, and maintainability. Fastify provides the HTTP
 server layer. They are complementary, not mutually exclusive.
 
+Workers run as NestJS **standalone application contexts** (no HTTP
+server), so they reuse the same domain modules and providers as the
+API. Use `@nestjs/bullmq` for queue producers and processors.
+
 ### 4.3 Database and data access
 
 -   PostgreSQL as the primary system of record
--   Prisma ORM and migrations
--   Redis for caching and queue infrastructure
+-   Drizzle ORM and Drizzle Kit migrations
+-   Redis for caching, queue infrastructure, and rate limiting
 -   BullMQ for background jobs
+
+**Data-access decision:** Use **Drizzle**, not Prisma. The critical
+database work in this system is SQL-heavy: 100k-row upserts
+(`INSERT … ON CONFLICT`), time-series price and stock history, possible
+partitioning, decimal-safe financial queries, and guarded state
+transitions (`UPDATE … WHERE status = …`). Drizzle expresses these
+directly and type-safely, and its migrations are reviewable SQL files.
+Map `NUMERIC` columns to strings in the schema and convert to a decimal
+library (e.g. `decimal.js`) in domain code; never to JavaScript
+`number`.
 
 Redis is not the source of truth for business data. Persist durable
 business state and job outcomes in PostgreSQL.
+
+**Redis/BullMQ requirements:**
+
+-   Redis must run with `maxmemory-policy noeviction` (a BullMQ
+    requirement; any eviction policy can silently drop jobs) and with
+    AOF persistence enabled. Verify both on Railway before production.
+-   Open-source BullMQ only rate-limits per queue; per-group limiting is
+    a paid BullMQ Pro feature. SP-API limits are per seller account and
+    per operation, and Keepa limits are per token budget. Implement an
+    internal Redis-backed token-bucket limiter keyed by
+    provider + account + operation, and have job handlers acquire a
+    token before each provider call.
 
 ### 4.4 Integrations
 
@@ -685,7 +720,12 @@ business state and job outcomes in PostgreSQL.
 -   Amazon Business Ordering API for supplier purchases on amazon.com
 -   CurrencyAPI initially for FX rates
 -   Carrier/consolidator APIs behind internal provider interfaces
--   Email provider behind a notification abstraction
+-   Email provider (Postmark or Resend) behind a notification
+    abstraction
+
+Evaluate Amazon's official SP-API JavaScript SDK before writing a
+client by hand. Whichever is used, wrap it behind the internal provider
+interface and the shared rate limiter.
 
 **Approved infrastructure exception:** SP-API notifications are
 delivered only to Amazon SQS or Amazon EventBridge. Use one AWS account
@@ -695,14 +735,21 @@ processing. No other AWS services are introduced.
 
 ### 4.5 Authentication, storage, testing, and monitoring
 
--   Authentication: Auth.js or a suitable managed authentication
-    provider
+-   Authentication: **Better Auth**, mounted in the NestJS/Fastify API
+    (session cookies, roles, and two-factor authentication). It is
+    framework-agnostic, unlike Auth.js, which is built around Next.js.
+    Require 2FA for all users, since the system controls seller
+    accounts and purchasing.
 -   Object storage: S3-compatible storage for reports, labels,
-    documents, and evidence
+    documents, and evidence. Use Railway's bucket offering if it meets
+    the requirements; otherwise Cloudflare R2.
 -   Unit/integration tests: Vitest
 -   Browser/end-to-end tests: Playwright
 -   Error monitoring: Sentry
--   Telemetry: OpenTelemetry
+-   Logging: structured JSON logs (Pino, Fastify's built-in logger) with
+    correlation IDs propagated through jobs
+-   Telemetry: add OpenTelemetry tracing once multiple services are in
+    production and cross-service tracing is needed; not in Phase 1
 -   Deployment: Docker containers on Railway
 -   Package management: pnpm
 -   Monorepo orchestration: Turborepo
@@ -719,7 +766,7 @@ operate while allowing individual workers to scale independently.
 
 ``` text
 apps/
-  web/                         # Next.js React application
+  web/                         # Vite + React SPA (static build)
   api/                         # NestJS API using Fastify adapter
   workers/
     product-discovery/
@@ -737,7 +784,7 @@ apps/
     reporting/
 
 packages/
-  database/                    # Prisma schema, migrations, DB utilities
+  database/                    # Drizzle schema, migrations, DB utilities
   shared/                      # Shared domain types and utilities
   validation/                  # Shared request/job schemas
   queue/                       # BullMQ queue definitions and helpers
@@ -948,9 +995,9 @@ and listing state in each marketplace.
     volume justifies it.
 9.  Add indexes based on measured query patterns; avoid indexing every
     column.
-10. Use bulk inserts/upserts for large discovery runs. Prisma has no
-    bulk upsert; use raw `INSERT … ON CONFLICT` (or `COPY` into a
-    staging table) for 100k-row batches.
+10. Use bulk inserts/upserts for large discovery runs: Drizzle
+    `insert(...).values([...]).onConflictDoUpdate(...)` in chunks, or
+    `COPY` into a staging table for 100k-row batches.
 11. Record only meaningful price changes where possible, while retaining
     enough observations for audit and trend analysis.
 12. Use transactions for order, purchase, shipment, and financial state
@@ -971,7 +1018,7 @@ Use Railway initially to reduce infrastructure and operational overhead.
 
 ### 7.1 Initial Railway services
 
--   `web`: Next.js frontend
+-   `web`: static SPA build (served by a static file server or the API)
 -   `api`: NestJS API with Fastify adapter
 -   Worker services, initially grouped by workload if economical:
     -   Research/enrichment workers
@@ -1122,8 +1169,9 @@ are validated; major compliance and cost risks are documented.
 ### Phase 1 --- Platform foundation
 
 -   Create pnpm/Turborepo monorepo.
--   Set up Next.js frontend and NestJS/Fastify API.
--   Set up PostgreSQL, Prisma, migrations, Redis, and BullMQ.
+-   Set up Vite React SPA and NestJS/Fastify API.
+-   Set up PostgreSQL, Drizzle, migrations, Redis (noeviction + AOF),
+    BullMQ, and the shared provider rate limiter.
 -   Add authentication, roles, configuration validation, logging,
     tracing, and error monitoring.
 -   Create CI pipeline, automated tests, Docker builds, and Railway
@@ -1260,8 +1308,8 @@ Cover:
 
 Cover:
 
--   PostgreSQL/Prisma repositories and transactions
--   Redis/BullMQ job lifecycle
+-   PostgreSQL/Drizzle repositories and transactions
+-   Redis/BullMQ job lifecycle and per-account rate limiting
 -   Keepa client response mapping and quota errors
 -   SP-API client behavior and throttling
 -   Currency and carrier provider adapters
@@ -1356,10 +1404,12 @@ The first production release should not be considered complete until:
 
 Follow these rules throughout implementation:
 
-1.  **Use only the selected stack:** React, Next.js, TypeScript,
-    Node.js, NestJS, Fastify adapter, PostgreSQL, Prisma, Redis, BullMQ,
+1.  **Use only the selected stack:** React SPA (Vite, TanStack Router,
+    TanStack Query, Tailwind, shadcn/ui), TypeScript, Node.js, NestJS,
+    Fastify adapter, PostgreSQL, Drizzle, Redis, BullMQ, Better Auth,
     and Railway.
-2.  Do not introduce .NET, C#, Angular, RabbitMQ, Kubernetes, or another
+2.  Do not introduce Next.js, Prisma, .NET, C#, Angular, RabbitMQ,
+    Kubernetes, or another
     infrastructure platform unless the project owner explicitly approves
     a change. The one approved exception is AWS SQS, used only as the
     SP-API notification destination (4.4).
@@ -1447,6 +1497,10 @@ Follow these rules throughout implementation:
 -   Inventory buffer defaults and override hierarchy.
 -   Data retention, customer-data privacy, and audit requirements.
 -   Railway plan/resource budget and expected product/order volumes.
+-   PostgreSQL hosting: confirm whether Railway Postgres provides
+    point-in-time recovery. If it offers only periodic snapshots, use a
+    managed Postgres with PITR (e.g. Neon, Supabase, Crunchy Bridge)
+    for production financial data, with the apps staying on Railway.
 
 ------------------------------------------------------------------------
 
