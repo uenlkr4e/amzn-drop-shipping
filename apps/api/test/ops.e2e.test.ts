@@ -3,6 +3,7 @@ import type { ApiEnv } from '@dropship/config';
 import { type Database, recordHeartbeat } from '@dropship/database';
 import { truncateAll } from '@dropship/database/testing';
 import { DATABASE } from '@dropship/nest-common';
+import { QUEUE_NAMES } from '@dropship/queue';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.factory';
@@ -49,6 +50,9 @@ describe('GET /api/ops/status', () => {
         failed: expect.any(Number),
       }),
     );
+    expect(body.queues.map((q: { name: string }) => q.name).sort()).toEqual(
+      Object.values(QUEUE_NAMES).sort(),
+    );
     const staleByInstance = Object.fromEntries(
       body.workers.map((w: { instanceId: string; stale: boolean }) => [w.instanceId, w.stale]),
     );
@@ -60,4 +64,28 @@ describe('GET /api/ops/status', () => {
     const res = await app.inject({ method: 'GET', url: '/api/ops/status', headers: { cookie } });
     expect(res.statusCode).toBe(403);
   });
+
+  it('rejects unauthenticated requests', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/ops/status' });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('GET /api/ops/status with Redis unreachable', () => {
+  it('fails fast with 503 and shuts down cleanly', async () => {
+    const env = testApiEnv({ REDIS_URL: 'redis://127.0.0.1:1/0' });
+    const app = await createApp(env);
+    try {
+      const cookie = await signInAs(app, env, 'operator');
+      const started = Date.now();
+      const res = await app.inject({ method: 'GET', url: '/api/ops/status', headers: { cookie } });
+      const elapsed = Date.now() - started;
+      console.log(`ops status with Redis down: ${res.statusCode} in ${elapsed}ms`);
+      expect(res.statusCode).toBe(503);
+      expect(res.json().code).toBe('QUEUE_STATUS_UNAVAILABLE');
+      expect(elapsed).toBeLessThan(5000);
+    } finally {
+      await app.close();
+    }
+  }, 20000);
 });

@@ -8,12 +8,18 @@ import {
   redisOptionsFromUrl,
   WORKER_HEARTBEAT_INTERVAL_MS,
 } from '@dropship/queue';
-import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  type OnModuleDestroy,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { API_ENV } from '../config/api-config.module';
 import type { OpsStatusDto } from './ops.dto';
 
 const STALE_AFTER_MS = WORKER_HEARTBEAT_INTERVAL_MS * 3;
+const QUEUE_STATUS_TIMEOUT_MS = 3000;
 
 @Injectable()
 export class OpsService implements OnModuleDestroy {
@@ -29,7 +35,12 @@ export class OpsService implements OnModuleDestroy {
     let queue = this.queues.get(name);
     if (!queue) {
       queue = new Queue(name, {
-        connection: redisOptionsFromUrl(this.env.REDIS_URL),
+        // Fail fast: HTTP handlers must not queue commands while Redis is down (workers keep null).
+        connection: {
+          ...redisOptionsFromUrl(this.env.REDIS_URL),
+          enableOfflineQueue: false,
+          maxRetriesPerRequest: 1,
+        },
         prefix: BULL_PREFIX,
       });
       this.queues.set(name, queue);
@@ -38,7 +49,37 @@ export class OpsService implements OnModuleDestroy {
   }
 
   async status(now: Date = new Date()): Promise<OpsStatusDto> {
-    const queues = await Promise.all(
+    const queues = await this.queueStatuses();
+    const workers = (await listHeartbeats(this.db)).map((row) => ({
+      workerGroup: row.workerGroup,
+      instanceId: row.instanceId,
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      stale: now.getTime() - row.lastSeenAt.getTime() > STALE_AFTER_MS,
+    }));
+    return { queues, workers };
+  }
+
+  private async queueStatuses(): Promise<OpsStatusDto['queues']> {
+    const unavailable = () =>
+      new ServiceUnavailableException({
+        code: 'QUEUE_STATUS_UNAVAILABLE',
+        message: 'Queue status unavailable',
+      });
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(unavailable()), QUEUE_STATUS_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([this.fetchQueueCounts(), timeout]);
+    } catch (error) {
+      throw error instanceof ServiceUnavailableException ? error : unavailable();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private fetchQueueCounts(): Promise<OpsStatusDto['queues']> {
+    return Promise.all(
       Object.values(QUEUE_NAMES).map(async (name) => {
         const counts = await this.queue(name).getJobCounts(
           'waiting',
@@ -57,13 +98,6 @@ export class OpsService implements OnModuleDestroy {
         };
       }),
     );
-    const workers = (await listHeartbeats(this.db)).map((row) => ({
-      workerGroup: row.workerGroup,
-      instanceId: row.instanceId,
-      lastSeenAt: row.lastSeenAt.toISOString(),
-      stale: now.getTime() - row.lastSeenAt.getTime() > STALE_AFTER_MS,
-    }));
-    return { queues, workers };
   }
 
   async onModuleDestroy(): Promise<void> {
