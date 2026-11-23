@@ -5,6 +5,9 @@ import { createLoggerOptions } from '@dropship/observability';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
+import type { Auth } from './auth/auth';
+import { AUTH } from './auth/auth.tokens';
+import { registerAuthRoutes } from './auth/register-auth-routes';
 import { setupSwagger } from './swagger';
 
 const REQUEST_ID = /^[\w.:-]{1,128}$/;
@@ -37,6 +40,7 @@ export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
     logger: env.LOG_LEVEL === 'silent' ? false : undefined,
   });
   app.setGlobalPrefix('api');
+  registerAuthRoutes(app, app.get<Auth>(AUTH));
   app.enableShutdownHooks();
   app
     .getHttpAdapter()
