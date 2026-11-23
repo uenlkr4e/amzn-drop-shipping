@@ -43,6 +43,7 @@ export async function createUserWithRole(
     baseURL: deps.env.BETTER_AUTH_URL,
     trustedOrigins: [deps.env.WEB_ORIGIN],
     allowSignUp: true,
+    rateLimit: false,
   });
   const result = await auth.api.signUpEmail({
     body: { email, password: input.password, name: input.name },

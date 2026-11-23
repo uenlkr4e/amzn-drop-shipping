@@ -103,4 +103,29 @@ describe('SessionGuard', () => {
     );
     expect(request.user?.role).toBe('viewer');
   });
+
+  it('rejects banned users', async () => {
+    const promise = guard(
+      readerReturning({ ...operator, banned: true, banExpires: null }),
+    ).canActivate(contextFor('anyUser', { headers: {} }));
+    await expect(promise).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(promise).rejects.toMatchObject({ response: { code: 'USER_BANNED' } });
+  });
+
+  it('rejects users whose ban has not expired yet', async () => {
+    const banExpires = new Date(Date.now() + 60_000);
+    const promise = guard(readerReturning({ ...operator, banned: true, banExpires })).canActivate(
+      contextFor('anyUser', { headers: {} }),
+    );
+    await expect(promise).rejects.toMatchObject({ response: { code: 'USER_BANNED' } });
+  });
+
+  it('allows users whose ban has expired', async () => {
+    const banExpires = new Date(Date.now() - 60_000);
+    await expect(
+      guard(readerReturning({ ...operator, banned: true, banExpires })).canActivate(
+        contextFor('anyUser', { headers: {} }),
+      ),
+    ).resolves.toBe(true);
+  });
 });

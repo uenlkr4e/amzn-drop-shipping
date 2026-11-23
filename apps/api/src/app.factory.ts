@@ -40,7 +40,7 @@ export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
     logger: env.LOG_LEVEL === 'silent' ? false : undefined,
   });
   app.setGlobalPrefix('api');
-  registerAuthRoutes(app, app.get<Auth>(AUTH));
+  registerAuthRoutes(app, app.get<Auth>(AUTH), env.BETTER_AUTH_URL);
   app.enableShutdownHooks();
   app
     .getHttpAdapter()

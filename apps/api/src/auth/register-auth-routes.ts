@@ -2,14 +2,39 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { Auth } from './auth';
 
-/** Mounts Better Auth at /api/auth/* directly on Fastify, outside Nest's guards. */
-export function registerAuthRoutes(app: NestFastifyApplication, auth: Auth): void {
+const ADMIN_PATH = /^\/api\/auth\/admin(\/|$)/;
+
+/**
+ * User management is CLI-only (audited, see create-user.ts), so the admin plugin's HTTP
+ * endpoints are never served. The path is decoded, slash-collapsed and lowercased first so
+ * encoded or oddly-cased variants cannot slip past the check.
+ */
+function isAdminPath(pathname: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  return ADMIN_PATH.test(decoded.replace(/\/{2,}/g, '/').toLowerCase());
+}
+
+/**
+ * Mounts Better Auth at /api/auth/* directly on Fastify, outside Nest's guards.
+ * `baseUrl` is the configured BETTER_AUTH_URL: request URLs are built from it rather than
+ * from the client-controlled Host / X-Forwarded-Host headers.
+ */
+export function registerAuthRoutes(app: NestFastifyApplication, auth: Auth, baseUrl: string): void {
+  const origin = new URL(baseUrl).origin;
   const fastify = app.getHttpAdapter().getInstance();
   fastify.route({
     method: ['GET', 'POST'],
     url: '/api/auth/*',
     async handler(request, reply) {
-      const url = new URL(request.url, `${request.protocol}://${request.host}`);
+      const url = new URL(request.url, origin);
+      if (isAdminPath(url.pathname)) {
+        return reply.status(404).send({ statusCode: 404, message: 'Not Found' });
+      }
       const response = await auth.handler(
         new Request(url, {
           method: request.method,

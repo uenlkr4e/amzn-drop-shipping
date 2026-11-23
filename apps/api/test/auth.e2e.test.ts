@@ -1,6 +1,7 @@
+import { randomInt } from 'node:crypto';
 import 'reflect-metadata';
 import type { ApiEnv } from '@dropship/config';
-import { auditLogs, type Database } from '@dropship/database';
+import { auditLogs, type Database, user } from '@dropship/database';
 import { truncateAll } from '@dropship/database/testing';
 import { DATABASE } from '@dropship/nest-common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -45,7 +46,8 @@ describe('authentication', () => {
       headers: { 'content-type': 'application/json', origin: env.WEB_ORIGIN },
       payload: { email: 'new@test.local', password: TEST_PASSWORD, name: 'New' },
     });
-    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'EMAIL_PASSWORD_SIGN_UP_DISABLED' });
   });
 
   it('audits user creation and session creation', async () => {
@@ -79,6 +81,89 @@ describe('authentication', () => {
       expect(res.json()).toMatchObject({ code: 'TWO_FACTOR_SETUP_REQUIRED' });
     } finally {
       await strict.close();
+    }
+  });
+
+  it('rejects cookie-authenticated POSTs from untrusted origins', async () => {
+    const cookie = await signInAs(app, env, 'operator');
+    const signOut = (origin: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/auth/sign-out',
+        headers: { 'content-type': 'application/json', cookie, origin },
+        payload: {},
+      });
+    const evil = await signOut('https://evil.example');
+    expect(evil.statusCode).toBe(403);
+    expect(evil.json()).toMatchObject({ code: 'INVALID_ORIGIN' });
+    const trusted = await signOut(env.WEB_ORIGIN);
+    expect(trusted.statusCode).toBe(200);
+  });
+
+  it('does not expose the admin plugin over HTTP', async () => {
+    const cookie = await signInAs(app, env, 'admin');
+    const target = await createUserWithRole(
+      { db, env },
+      { email: 'target@test.local', password: TEST_PASSWORD, name: 'T', role: 'viewer' },
+    );
+    const setRole = await app.inject({
+      method: 'POST',
+      url: '/api/auth/admin/set-role',
+      headers: { 'content-type': 'application/json', cookie, origin: env.WEB_ORIGIN },
+      payload: { userId: target.userId, role: 'admin' },
+    });
+    expect(setRole.statusCode).toBe(404);
+    const [row] = await db.select().from(user).where(eq(user.id, target.userId));
+    expect(row?.role).toBe('viewer');
+    for (const url of [
+      '/api/auth/admin/list-users',
+      '/api/auth/admin/list-users/',
+      '/api/auth//admin/list-users',
+      '/api/auth/Admin/list-users',
+      '/api/auth/%61dmin/list-users',
+    ]) {
+      const res = await app.inject({ method: 'GET', url, headers: { cookie } });
+      expect(res.statusCode, url).toBe(404);
+    }
+  });
+
+  it('ignores a malformed X-Forwarded-Host when building the auth URL', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/auth/get-session',
+      headers: { 'x-forwarded-host': 'a b/%' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('rate-limits repeated failed sign-ins when rate limiting is on', async () => {
+    const limitedEnv = testApiEnv({ APP_ENV: 'staging' });
+    const limited = await createApp(limitedEnv);
+    try {
+      const email = 'limited@test.local';
+      await createUserWithRole(
+        { db, env: limitedEnv },
+        { email, password: TEST_PASSWORD, name: 'L', role: 'viewer' },
+      );
+      // A fresh client IP per run: Better Auth's in-memory limiter is shared across the process.
+      const ip = `203.0.113.${randomInt(1, 255)}`;
+      const statuses: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        const res = await limited.inject({
+          method: 'POST',
+          url: '/api/auth/sign-in/email',
+          headers: {
+            'content-type': 'application/json',
+            origin: limitedEnv.WEB_ORIGIN,
+            'x-forwarded-for': ip,
+          },
+          payload: { email, password: 'wrong-password-wrong' },
+        });
+        statuses.push(res.statusCode);
+      }
+      expect(statuses).toEqual([401, 401, 401, 401, 401, 429]);
+    } finally {
+      await limited.close();
     }
   });
 });

@@ -21,6 +21,7 @@ import { SessionGuard } from './session.guard';
           secret: env.BETTER_AUTH_SECRET,
           baseURL: env.BETTER_AUTH_URL,
           trustedOrigins: [env.WEB_ORIGIN],
+          rateLimit: env.APP_ENV !== 'test',
         }),
     },
     { provide: APP_GUARD, useClass: SessionGuard },

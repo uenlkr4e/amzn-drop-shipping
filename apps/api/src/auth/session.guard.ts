@@ -34,6 +34,16 @@ export interface AuthenticatedUser {
   twoFactorEnabled: boolean;
 }
 
+/** Banned with no expiry, or with an expiry still in the future. */
+function isBanned(user: Record<string, unknown>): boolean {
+  if (user.banned !== true) return false;
+  const expires = user.banExpires;
+  if (expires === null || expires === undefined) return true;
+  const time = new Date(expires as string | number | Date).getTime();
+  // An unparseable expiry is treated as a permanent ban.
+  return Number.isNaN(time) || time > Date.now();
+}
+
 @Injectable()
 export class SessionGuard implements CanActivate {
   constructor(
@@ -59,6 +69,12 @@ export class SessionGuard implements CanActivate {
       role: toRole(result.user.role),
       twoFactorEnabled: result.user.twoFactorEnabled === true,
     };
+
+    // The admin plugin blocks banned users at sign-in; this also covers sessions that were
+    // already open when the ban was set.
+    if (isBanned(result.user)) {
+      throw new ForbiddenException({ code: 'USER_BANNED', message: 'This account is banned' });
+    }
 
     if (this.env.REQUIRE_2FA && !user.twoFactorEnabled) {
       throw new ForbiddenException({

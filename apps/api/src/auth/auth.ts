@@ -10,6 +10,8 @@ export interface CreateAuthOptions {
   trustedOrigins: string[];
   /** Only the create-user script enables sign-up. The HTTP API never does. */
   allowSignUp?: boolean;
+  /** HTTP rate limiting. Defaults to on; tests and the create-user script turn it off. */
+  rateLimit?: boolean;
 }
 
 export function createAuth(options: CreateAuthOptions) {
@@ -20,6 +22,26 @@ export function createAuth(options: CreateAuthOptions) {
     basePath: '/api/auth',
     trustedOrigins: options.trustedOrigins,
     database: drizzleAdapter(options.db, { provider: 'pg', schema: authSchema }),
+    advanced: {
+      // Explicit so the checks never depend on env vars: Better Auth otherwise skips
+      // the origin check whenever NODE_ENV=test or TEST is set.
+      disableOriginCheck: false,
+      disableCSRFCheck: false,
+      // Caddy sits in front and overwrites X-Forwarded-For; the API is not publicly reachable.
+      ipAddress: { ipAddressHeaders: ['x-forwarded-for'] },
+    },
+    // In-memory storage is per process: fine for Phase 1's single API replica.
+    // Running several replicas needs shared (secondary) storage for the limits to hold.
+    rateLimit: {
+      enabled: options.rateLimit ?? true,
+      storage: 'memory',
+      window: 60,
+      max: 100,
+      customRules: {
+        '/sign-in/email': { window: 60, max: 5 },
+        '/two-factor/verify-totp': { window: 60, max: 5 },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       disableSignUp: !options.allowSignUp,
