@@ -315,6 +315,9 @@ importers:
       bullmq:
         specifier: ^6.7.8
         version: 6.7.8(ioredis@6.0.0(supports-color@8.1.1))(pg@8.23.1)
+      ioredis:
+        specifier: ^6.0.0
+        version: 6.0.0(supports-color@8.1.1)
       pino:
         specifier: ^10.4.0
         version: 10.4.0
@@ -340,9 +343,6 @@ importers:
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
-      ioredis:
-        specifier: ^6.0.0
-        version: 6.0.0(supports-color@8.1.1)
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
