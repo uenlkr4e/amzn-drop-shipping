@@ -1,0 +1,66 @@
+import { describe, expect, it } from 'vitest';
+import { apiEnvSchema, EnvValidationError, parseEnv, workerEnvSchema } from './env';
+
+const validApi = {
+  APP_ENV: 'development',
+  DATABASE_URL: 'postgres://u:p@localhost:5432/db',
+  REDIS_URL: 'redis://localhost:6379/0',
+  BETTER_AUTH_SECRET: 'x'.repeat(32),
+  BETTER_AUTH_URL: 'http://localhost:5173',
+  WEB_ORIGIN: 'http://localhost:5173',
+};
+
+describe('parseEnv(apiEnvSchema)', () => {
+  it('parses a valid environment and applies defaults', () => {
+    const env = parseEnv(apiEnvSchema, validApi);
+    expect(env.PORT).toBe(3000);
+    expect(env.LOG_LEVEL).toBe('info');
+    expect(env.REQUIRE_2FA).toBe(true);
+    expect(env.SENTRY_DSN).toBeUndefined();
+  });
+
+  it('parses REQUIRE_2FA=false as boolean false', () => {
+    const env = parseEnv(apiEnvSchema, { ...validApi, REQUIRE_2FA: 'false' });
+    expect(env.REQUIRE_2FA).toBe(false);
+  });
+
+  it('treats an empty SENTRY_DSN as unset', () => {
+    const env = parseEnv(apiEnvSchema, { ...validApi, SENTRY_DSN: '' });
+    expect(env.SENTRY_DSN).toBeUndefined();
+  });
+
+  it('names every missing or invalid variable in one error', () => {
+    const { DATABASE_URL: _db, ...rest } = validApi;
+    const call = () => parseEnv(apiEnvSchema, { ...rest, BETTER_AUTH_SECRET: 'short' });
+    expect(call).toThrow(EnvValidationError);
+    expect(call).toThrow(/DATABASE_URL/);
+    expect(call).toThrow(/BETTER_AUTH_SECRET/);
+  });
+
+  it('refuses REQUIRE_2FA=false in production', () => {
+    const call = () =>
+      parseEnv(apiEnvSchema, { ...validApi, APP_ENV: 'production', REQUIRE_2FA: 'false' });
+    expect(call).toThrow(/REQUIRE_2FA/);
+  });
+});
+
+describe('parseEnv(workerEnvSchema)', () => {
+  it('splits WORKER_GROUPS into a trimmed list', () => {
+    const env = parseEnv(workerEnvSchema, {
+      DATABASE_URL: validApi.DATABASE_URL,
+      REDIS_URL: validApi.REDIS_URL,
+      WORKER_GROUPS: 'system, research ,',
+    });
+    expect(env.WORKER_GROUPS).toEqual(['system', 'research']);
+  });
+
+  it('requires at least one worker group', () => {
+    const call = () =>
+      parseEnv(workerEnvSchema, {
+        DATABASE_URL: validApi.DATABASE_URL,
+        REDIS_URL: validApi.REDIS_URL,
+        WORKER_GROUPS: ' , ',
+      });
+    expect(call).toThrow(/WORKER_GROUPS/);
+  });
+});
