@@ -7,3 +7,7 @@ packages:
 allowBuilds:
   "@swc/core": true
   esbuild: true
+  # Telemetry postinstall (via swagger-ui-dist) — not needed.
+  "@scarf/scarf": false
+  # Optional native msgpack accelerator for bullmq; the pure-JS fallback is fine.
+  msgpackr-extract: false
