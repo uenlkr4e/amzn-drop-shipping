@@ -237,9 +237,9 @@ e2e/test-results
 APP_ENV=development
 LOG_LEVEL=info
 PORT=3000
-DATABASE_URL=postgres://dropship:dropship@localhost:5432/dropship
+DATABASE_URL=postgres://dropship:dropship@localhost:5433/dropship
 REDIS_URL=redis://localhost:6379/0
-TEST_DATABASE_URL=postgres://dropship:dropship@localhost:5432/dropship_test
+TEST_DATABASE_URL=postgres://dropship:dropship@localhost:5433/dropship_test
 TEST_REDIS_URL=redis://localhost:6379/1
 # At least 32 characters. Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 BETTER_AUTH_SECRET=replace-with-a-random-string-of-32-chars-or-more
@@ -262,7 +262,7 @@ services:
       POSTGRES_PASSWORD: dropship
       POSTGRES_DB: dropship
     ports:
-      - "5432:5432"
+      - "5433:5432"   # 5433 on the host: avoids clashing with a locally installed Postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
