@@ -1,0 +1,35 @@
+{
+  "files": {
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/.turbo",
+      "!**/migrations",
+      "!apps/api/openapi.json",
+      "!apps/web/src/api/schema.d.ts",
+      "!apps/web/src/routeTree.gen.ts",
+      "!apps/web/src/components/ui",
+      "!e2e/playwright-report",
+      "!e2e/test-results",
+      "!.idea",
+      "!**/*.md"
+    ]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "single" },
+    "parser": { "unsafeParameterDecoratorsEnabled": true }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": { "useImportType": "off" }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "dropship-platform",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test --concurrency=1",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "db:generate": "pnpm --filter @dropship/database db:generate",
+    "db:migrate": "pnpm --filter @dropship/database db:migrate"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "@types/node": "^26.6.6",
+    "turbo": "^2.11.13",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "globalPassThroughEnv": [
+    "APP_ENV",
+    "NODE_ENV",
+    "LOG_LEVEL",
+    "PORT",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "TEST_DATABASE_URL",
+    "TEST_REDIS_URL",
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL",
+    "WEB_ORIGIN",
+    "REQUIRE_2FA",
+    "SENTRY_DSN",
+    "WORKER_GROUPS",
+    "CI"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
