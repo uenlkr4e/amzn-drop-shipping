@@ -15,6 +15,9 @@ describe('database client', () => {
       expect.arrayContaining([
         'user',
         'session',
+        'account',
+        'verification',
+        'two_factor',
         'audit_logs',
         'integration_logs',
         'worker_heartbeats',

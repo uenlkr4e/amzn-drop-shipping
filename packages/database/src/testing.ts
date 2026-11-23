@@ -29,6 +29,6 @@ export async function prepareTestDatabase(): Promise<void> {
 
 export async function truncateAll(db: Database): Promise<void> {
   await db.execute(
-    sql`TRUNCATE TABLE "user", audit_logs, integration_logs, worker_heartbeats RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE TABLE "user", verification, audit_logs, integration_logs, worker_heartbeats RESTART IDENTITY CASCADE`,
   );
 }

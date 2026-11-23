@@ -12,9 +12,14 @@ export interface DatabaseHandle {
 
 export function createDatabase(
   url: string,
-  options: { maxConnections?: number } = {},
+  options: { maxConnections?: number; onError?: (error: Error) => void } = {},
 ): DatabaseHandle {
   const pool = new Pool({ connectionString: url, max: options.maxConnections ?? 10 });
+  // An idle client error with no listener would crash the process.
+  pool.on('error', (error) => {
+    if (options.onError) options.onError(error);
+    else console.error('Postgres pool error', error);
+  });
   const db = drizzle({ client: pool, schema });
   let closed = false;
   return {
