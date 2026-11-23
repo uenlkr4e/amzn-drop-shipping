@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { IncomingMessage } from 'node:http';
 import type { ApiEnv } from '@dropship/config';
 import { createLoggerOptions } from '@dropship/observability';
 import { NestFactory } from '@nestjs/core';
@@ -6,11 +7,30 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { AppModule } from './app.module';
 import { setupSwagger } from './swagger';
 
+const REQUEST_ID = /^[\w.:-]{1,128}$/;
+
+/** Reuses a well-formed incoming x-request-id for correlation; otherwise generates one. */
+function genReqId(req: IncomingMessage): string {
+  const incoming = req.headers['x-request-id'];
+  return typeof incoming === 'string' && REQUEST_ID.test(incoming) ? incoming : randomUUID();
+}
+
 export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
   const adapter = new FastifyAdapter({
-    logger: createLoggerOptions({ service: 'api', level: env.LOG_LEVEL, appEnv: env.APP_ENV }),
-    requestIdHeader: 'x-request-id',
-    genReqId: () => randomUUID(),
+    logger: {
+      ...createLoggerOptions({ service: 'api', level: env.LOG_LEVEL, appEnv: env.APP_ENV }),
+      // Log the path only: query strings may carry tokens. Headers are not logged at all.
+      serializers: {
+        req: (req: { method: string; url: string; id: string }) => ({
+          method: req.method,
+          url: req.url.split('?')[0],
+          id: req.id,
+        }),
+      },
+    },
+    // Fastify would trust any incoming header value verbatim; genReqId validates it instead.
+    requestIdHeader: false,
+    genReqId,
     trustProxy: true,
   });
   const app = await NestFactory.create<NestFastifyApplication>(AppModule.forRoot(env), adapter, {

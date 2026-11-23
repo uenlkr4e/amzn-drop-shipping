@@ -44,13 +44,26 @@ export class HealthController {
   @Public()
   @Get('ready')
   async ready() {
-    const checks = {
-      database: await check(() => this.db.execute(sql`select 1`)),
-      redis: await check(() => this.redis.ping()),
-    };
+    const [database, redis] = await Promise.all([
+      check(() => this.db.execute(sql`select 1`)),
+      this.checkRedis(),
+    ]);
+    const checks = { database, redis };
     if (Object.values(checks).some((result) => result !== 'ok')) {
       throw new ServiceUnavailableException({ status: 'error', checks });
     }
     return { status: 'ok', checks };
+  }
+
+  /**
+   * The client retries commands forever while reconnecting (maxRetriesPerRequest: null, for
+   * BullMQ), so a PING sent while Redis is down would sit in the offline queue indefinitely.
+   * Only ping when connected, or when the lazy client has never connected ('wait'), so the
+   * first probe opens the connection.
+   */
+  private checkRedis(): Promise<CheckResult> {
+    const { status } = this.redis;
+    if (status !== 'ready' && status !== 'wait') return Promise.resolve('error');
+    return check(() => this.redis.ping());
   }
 }

@@ -31,5 +31,11 @@
       "recommended": true,
       "style": { "useImportType": "off" }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/**/src/**/*.module.ts", "packages/nest-common/src/**/*.module.ts"],
+      "linter": { "rules": { "complexity": { "noStaticOnlyClass": "off" } } }
+    }
+  ]
 }
