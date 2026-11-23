@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   index,
   integer,
@@ -14,7 +15,9 @@ export const auditLogs = pgTable(
   'audit_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
     actorType: text('actor_type', { enum: ['user', 'system'] }).notNull(),
     actorUserId: text('actor_user_id').references(() => user.id, { onDelete: 'set null' }),
     action: text('action').notNull(),
@@ -35,7 +38,9 @@ export const integrationLogs = pgTable(
   'integration_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
     provider: text('provider').notNull(),
     operation: text('operation').notNull(),
     accountRef: text('account_ref'),

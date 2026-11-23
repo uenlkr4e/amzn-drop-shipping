@@ -33,12 +33,36 @@ export async function recordIntegrationCall(
   });
 }
 
+const MAX_ERROR_MESSAGE_LENGTH = 2000;
+
+function toStatus(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && /^\d{3}$/.test(value.trim())) return Number(value);
+  return undefined;
+}
+
 function httpStatusOf(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
-  const { status, statusCode } = error as { status?: unknown; statusCode?: unknown };
-  if (typeof status === 'number') return status;
-  if (typeof statusCode === 'number') return statusCode;
-  return undefined;
+  const { status, statusCode, response } = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    response?: { status?: unknown; statusCode?: unknown } | null;
+  };
+  return (
+    toStatus(status) ??
+    toStatus(statusCode) ??
+    toStatus(response?.status) ??
+    toStatus(response?.statusCode)
+  );
+}
+
+/** Logging must never change the outcome of the call being logged. */
+async function safeRecord(db: Database, record: IntegrationCallRecord): Promise<void> {
+  try {
+    await recordIntegrationCall(db, record);
+  } catch (error) {
+    console.error('Failed to record integration call', error);
+  }
 }
 
 /** Times an external call, records the outcome, and returns or rethrows the call's result. */
@@ -48,23 +72,25 @@ export async function withIntegrationLog<T>(
   call: () => Promise<T>,
 ): Promise<T> {
   const started = performance.now();
+  let result: T;
   try {
-    const result = await call();
-    await recordIntegrationCall(db, {
-      ...meta,
-      status: 'success',
-      durationMs: Math.round(performance.now() - started),
-    });
-    return result;
+    result = await call();
   } catch (error) {
     const httpStatus = httpStatusOf(error);
-    await recordIntegrationCall(db, {
+    const message = error instanceof Error ? error.message : String(error);
+    await safeRecord(db, {
       ...meta,
       status: httpStatus === 429 ? 'throttled' : 'error',
       httpStatus,
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: message.slice(0, MAX_ERROR_MESSAGE_LENGTH),
       durationMs: Math.round(performance.now() - started),
     });
     throw error;
   }
+  await safeRecord(db, {
+    ...meta,
+    status: 'success',
+    durationMs: Math.round(performance.now() - started),
+  });
+  return result;
 }

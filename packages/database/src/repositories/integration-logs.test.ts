@@ -1,4 +1,5 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Database } from '../client';
 import { integrationLogs } from '../schema';
 import { connectTestDatabase, truncateAll } from '../testing';
 import { withIntegrationLog } from './integration-logs';
@@ -45,5 +46,63 @@ describe('withIntegrationLog', () => {
     await expect(throttled).rejects.toThrow();
     const rows = await handle.db.select().from(integrationLogs);
     expect(rows[0]?.status).toBe('throttled');
+  });
+
+  it('records a nested response.status of 429 as throttled', async () => {
+    const throttled = withIntegrationLog(
+      handle.db,
+      { provider: 'sp-api', operation: 'getOrders' },
+      async () => {
+        throw Object.assign(new Error('Too Many Requests'), { response: { status: 429 } });
+      },
+    );
+    await expect(throttled).rejects.toThrow();
+    const rows = await handle.db.select().from(integrationLogs);
+    expect(rows[0]).toMatchObject({ status: 'throttled', httpStatus: 429 });
+  });
+
+  it('accepts numeric string statuses', async () => {
+    const throttled = withIntegrationLog(handle.db, { provider: 'x', operation: 'y' }, async () => {
+      throw Object.assign(new Error('slow down'), { status: '429' });
+    });
+    await expect(throttled).rejects.toThrow();
+    const rows = await handle.db.select().from(integrationLogs);
+    expect(rows[0]).toMatchObject({ status: 'throttled', httpStatus: 429 });
+  });
+
+  it('truncates very long error messages to 2000 characters', async () => {
+    const failing = withIntegrationLog(handle.db, { provider: 'x', operation: 'y' }, async () => {
+      throw new Error('a'.repeat(5000));
+    });
+    await expect(failing).rejects.toThrow();
+    const rows = await handle.db.select().from(integrationLogs);
+    expect(rows[0]?.errorMessage).toHaveLength(2000);
+  });
+
+  describe('when the log insert fails', () => {
+    const brokenDb = {
+      insert: () => {
+        throw new Error('db down');
+      },
+    } as unknown as Database;
+
+    it('still returns the result of a successful call exactly once', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const call = vi.fn(async () => 'ok');
+      await expect(
+        withIntegrationLog(brokenDb, { provider: 'x', operation: 'y' }, call),
+      ).resolves.toBe('ok');
+      expect(call).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+    });
+
+    it('rethrows the original provider error, not the logging error', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const failing = withIntegrationLog(brokenDb, { provider: 'x', operation: 'y' }, async () => {
+        throw new Error('provider exploded');
+      });
+      await expect(failing).rejects.toThrow('provider exploded');
+      spy.mockRestore();
+    });
   });
 });

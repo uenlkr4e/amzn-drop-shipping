@@ -37,4 +37,26 @@ describe('audit repository', () => {
       correlationId: 'req-1',
     });
   });
+
+  it('orders entries written in one transaction newest first', async () => {
+    for (let i = 0; i < 10; i++) {
+      await truncateAll(handle.db);
+      await handle.db.transaction(async (tx) => {
+        await recordAudit(tx, {
+          actorType: 'system',
+          action: 'first',
+          entityType: 't',
+          entityId: 'e',
+        });
+        await recordAudit(tx, {
+          actorType: 'system',
+          action: 'second',
+          entityType: 't',
+          entityId: 'e',
+        });
+      });
+      const entries = await listAuditEntries(handle.db, { entityType: 't', entityId: 'e' });
+      expect(entries.map((e) => e.action)).toEqual(['second', 'first']);
+    }
+  });
 });

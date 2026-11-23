@@ -8,6 +8,13 @@
       "when": 1795464376057,
       "tag": "0000_brown_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795464920608,
+      "tag": "0001_cuddly_maestro",
+      "breakpoints": true
     }
   ]
 }
