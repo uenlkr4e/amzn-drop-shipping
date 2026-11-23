@@ -11,9 +11,16 @@ export function redisOptionsFromUrl(url: string): RedisOptions {
     throw new Error(`Unsupported Redis URL protocol: ${parsed.protocol}`);
   }
   const dbPath = parsed.pathname.replace(/^\//, '');
+  if (dbPath && !/^\d+$/.test(dbPath)) {
+    throw new Error(`Invalid Redis db "${dbPath}": must be a non-negative integer`);
+  }
+  const port = parsed.port ? Number(parsed.port) : 6379;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid Redis port "${parsed.port}": must be 1-65535`);
+  }
   return {
-    host: parsed.hostname,
-    port: parsed.port ? Number(parsed.port) : 6379,
+    host: parsed.hostname.replace(/^\[|\]$/g, ''),
+    port,
     username: parsed.username ? decodeURIComponent(parsed.username) : undefined,
     password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
     db: dbPath ? Number(dbPath) : 0,

@@ -80,6 +80,17 @@ export function createTokenBucketLimiter(redis: Redis, options: { keyPrefix?: st
     rule: TokenBucketRule,
     tokens = 1,
   ): Promise<AcquireResult> {
+    if (!Number.isFinite(rule.capacity) || rule.capacity <= 0) {
+      throw new RangeError(`Bucket capacity must be a finite number > 0, got ${rule.capacity}`);
+    }
+    if (!Number.isFinite(rule.refillPerSecond) || rule.refillPerSecond <= 0) {
+      throw new RangeError(
+        `refillPerSecond must be a finite number > 0, got ${rule.refillPerSecond}`,
+      );
+    }
+    if (!Number.isFinite(tokens) || tokens <= 0) {
+      throw new RangeError(`Requested tokens must be a finite number > 0, got ${tokens}`);
+    }
     if (tokens > rule.capacity) {
       throw new RangeError(`Requested ${tokens} tokens but bucket capacity is ${rule.capacity}`);
     }
@@ -92,6 +103,12 @@ export function createTokenBucketLimiter(redis: Redis, options: { keyPrefix?: st
     return { allowed: allowed === 1, retryAfterMs };
   }
 
+  /**
+   * Waits until a token is available. If the time to the next token would exceed `maxWaitMs`
+   * (default 30s), throws `RateLimitTimeoutError` immediately instead of sleeping; callers such
+   * as BullMQ jobs should catch it and delay/retry the job. Sleeps carry +/-10% jitter so many
+   * waiters do not stampede.
+   */
   async function acquire(
     key: string,
     rule: TokenBucketRule,
@@ -102,10 +119,11 @@ export function createTokenBucketLimiter(redis: Redis, options: { keyPrefix?: st
     for (;;) {
       const result = await tryAcquire(key, rule, opts.tokens ?? 1);
       if (result.allowed) return;
-      if (Date.now() - started + result.retryAfterMs > maxWaitMs) {
+      const delayMs = result.retryAfterMs * (0.9 + Math.random() * 0.2);
+      if (Date.now() - started + delayMs > maxWaitMs) {
         throw new RateLimitTimeoutError(key, maxWaitMs);
       }
-      await sleep(result.retryAfterMs);
+      await sleep(delayMs);
     }
   }
 

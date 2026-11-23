@@ -25,4 +25,19 @@ describe('redisOptionsFromUrl', () => {
   it('rejects non-redis protocols', () => {
     expect(() => redisOptionsFromUrl('http://example.com')).toThrow(/protocol/);
   });
+
+  it('rejects a non-integer or negative db', () => {
+    expect(() => redisOptionsFromUrl('redis://host/abc')).toThrow(/db/);
+    expect(() => redisOptionsFromUrl('redis://host/-1')).toThrow(/db/);
+    expect(() => redisOptionsFromUrl('redis://host/1.5')).toThrow(/db/);
+  });
+
+  it('rejects out-of-range ports', () => {
+    expect(() => redisOptionsFromUrl('redis://host:0')).toThrow();
+    expect(() => redisOptionsFromUrl('redis://host:99999')).toThrow();
+  });
+
+  it('strips IPv6 brackets from the host', () => {
+    expect(redisOptionsFromUrl('redis://[::1]:6379/0').host).toBe('::1');
+  });
 });

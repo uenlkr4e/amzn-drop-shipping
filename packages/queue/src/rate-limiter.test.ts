@@ -54,4 +54,16 @@ describe('token bucket limiter', () => {
       RangeError,
     );
   });
+
+  it.each([
+    ['refillPerSecond 0', { capacity: 1, refillPerSecond: 0 }, 1],
+    ['refillPerSecond -1', { capacity: 1, refillPerSecond: -1 }, 1],
+    ['refillPerSecond NaN', { capacity: 1, refillPerSecond: Number.NaN }, 1],
+    ['capacity 0', { capacity: 0, refillPerSecond: 1 }, 1],
+    ['tokens 0', { capacity: 1, refillPerSecond: 1 }, 0],
+    ['tokens -1', { capacity: 1, refillPerSecond: 1 }, -1],
+  ])('rejects invalid input (%s) without touching Redis', async (_name, rule, tokens) => {
+    await expect(limiter.tryAcquire('invalid:key', rule, tokens)).rejects.toThrow(RangeError);
+    expect(await redis.exists('test-ratelimit:invalid:key')).toBe(0);
+  });
 });
