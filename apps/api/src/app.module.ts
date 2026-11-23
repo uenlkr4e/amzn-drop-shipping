@@ -6,6 +6,7 @@ import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { AuthModule } from './auth/auth.module';
 import { ApiConfigModule } from './config/api-config.module';
 import { HealthModule } from './health/health.module';
+import { OpsModule } from './ops/ops.module';
 
 @Module({})
 export class AppModule {
@@ -19,6 +20,7 @@ export class AppModule {
         RedisModule.forRoot(env.REDIS_URL),
         HealthModule,
         AuthModule,
+        OpsModule,
       ],
       providers: [{ provide: APP_FILTER, useClass: SentryGlobalFilter }],
     };
