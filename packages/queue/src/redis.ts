@@ -1,11 +1,21 @@
-import type { RedisOptions } from 'ioredis';
+/** Plain structural options accepted by any ioredis copy (and BullMQ). */
+export interface RedisConnectionOptions {
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  db: number;
+  family: 0;
+  maxRetriesPerRequest: null;
+  tls?: Record<string, never>;
+}
 
 /**
  * Converts a redis:// or rediss:// URL to ioredis options suitable for BullMQ.
  * family: 0 lets ioredis resolve IPv6 addresses (Railway private networking).
  * maxRetriesPerRequest: null is required by BullMQ workers.
  */
-export function redisOptionsFromUrl(url: string): RedisOptions {
+export function redisOptionsFromUrl(url: string): RedisConnectionOptions {
   const parsed = new URL(url);
   if (parsed.protocol !== 'redis:' && parsed.protocol !== 'rediss:') {
     throw new Error(`Unsupported Redis URL protocol: ${parsed.protocol}`);

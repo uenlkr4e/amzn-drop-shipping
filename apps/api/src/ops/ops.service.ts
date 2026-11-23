@@ -9,7 +9,7 @@ import {
   WORKER_HEARTBEAT_INTERVAL_MS,
 } from '@dropship/queue';
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
-import { type ConnectionOptions, Queue } from 'bullmq';
+import { Queue } from 'bullmq';
 import { API_ENV } from '../config/api-config.module';
 import type { OpsStatusDto } from './ops.dto';
 
@@ -29,8 +29,7 @@ export class OpsService implements OnModuleDestroy {
     let queue = this.queues.get(name);
     if (!queue) {
       queue = new Queue(name, {
-        // ioredis 6 RedisOptions is not structurally assignable to BullMQ 6 ConnectionOptions.
-        connection: redisOptionsFromUrl(this.env.REDIS_URL) as ConnectionOptions,
+        connection: redisOptionsFromUrl(this.env.REDIS_URL),
         prefix: BULL_PREFIX,
       });
       this.queues.set(name, queue);
