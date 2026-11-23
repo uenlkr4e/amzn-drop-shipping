@@ -1,9 +1,10 @@
 import 'reflect-metadata';
 import type { Database, DatabaseHandle } from '@dropship/database';
 import { assertTestDatabaseUrl } from '@dropship/database/testing';
+import { redisOptionsFromUrl } from '@dropship/queue';
 import { Test } from '@nestjs/testing';
 import { sql } from 'drizzle-orm';
-import type { Redis } from 'ioredis';
+import { Redis as IORedis, type Redis } from 'ioredis';
 import { describe, expect, it } from 'vitest';
 import { DATABASE, DATABASE_HANDLE, DatabaseModule } from './database.module';
 import { REDIS, RedisModule } from './redis.module';
@@ -30,6 +31,18 @@ describe('DatabaseModule and RedisModule', () => {
     const handle = app.get<DatabaseHandle>(DATABASE_HANDLE);
     await app.close();
     expect(handle.pool.ended).toBe(true);
+    expect(redis.status).toBe('end');
+  });
+
+  it('RedisModule shutdown called twice concurrently resolves and ends the client', async () => {
+    const redisUrl = process.env.TEST_REDIS_URL;
+    if (!redisUrl) throw new Error('TEST_REDIS_URL must be set');
+    const redis = new IORedis({ ...redisOptionsFromUrl(redisUrl), lazyConnect: true });
+    expect(await redis.ping()).toBe('PONG');
+    const module = new RedisModule(redis);
+    await expect(
+      Promise.all([module.onApplicationShutdown(), module.onApplicationShutdown()]),
+    ).resolves.toBeDefined();
     expect(redis.status).toBe('end');
   });
 });

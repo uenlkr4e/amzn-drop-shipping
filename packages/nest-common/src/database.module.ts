@@ -15,7 +15,10 @@ export const DATABASE_HANDLE = Symbol('DATABASE_HANDLE');
 export class DatabaseModule implements OnApplicationShutdown {
   constructor(@Inject(DATABASE_HANDLE) private readonly handle: DatabaseHandle) {}
 
-  static forRoot(url: string, options: { maxConnections?: number } = {}): DynamicModule {
+  static forRoot(
+    url: string,
+    options: { maxConnections?: number; onError?: (error: Error) => void } = {},
+  ): DynamicModule {
     return {
       module: DatabaseModule,
       providers: [

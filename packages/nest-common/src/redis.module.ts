@@ -30,13 +30,28 @@ export class RedisModule implements OnApplicationShutdown {
   }
 
   async onApplicationShutdown(): Promise<void> {
-    if (this.redis.status === 'ready') {
-      // quit() resolves on the server's OK; wait for the socket to actually close.
-      const closed = new Promise<void>((resolve) => this.redis.once('end', () => resolve()));
-      await this.redis.quit();
-      await closed;
+    if (this.redis.status !== 'ready') {
+      this.redis.disconnect();
       return;
     }
-    this.redis.disconnect();
+    let timer: NodeJS.Timeout | undefined;
+    let onEnd: (() => void) | undefined;
+    try {
+      // quit() resolves on the server's OK; wait for the socket to actually close.
+      const closed = new Promise<void>((resolve) => {
+        onEnd = resolve;
+        this.redis.once('end', onEnd);
+      });
+      const timeout = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, 5000);
+      });
+      await Promise.race([this.redis.quit().then(() => closed), timeout]);
+    } catch {
+      // shutdown must never throw; disconnect below forces the close
+    } finally {
+      clearTimeout(timer);
+      if (onEnd) this.redis.off('end', onEnd);
+      this.redis.disconnect();
+    }
   }
 }
