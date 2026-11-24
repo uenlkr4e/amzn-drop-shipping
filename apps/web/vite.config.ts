@@ -6,7 +6,8 @@ import { defineConfig } from 'vite';
 
 // The dev and preview servers proxy /api to the API so the browser sees one origin,
 // exactly like Caddy in production. changeOrigin stays false so Better Auth sees the browser's Host.
-const apiProxy = { '/api': { target: 'http://localhost:3000', changeOrigin: false } };
+// xfwd adds X-Forwarded-For (like Caddy) so the API's per-IP rate limits work locally.
+const apiProxy = { '/api': { target: 'http://localhost:3000', changeOrigin: false, xfwd: true } };
 
 export default defineConfig({
   plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()],
