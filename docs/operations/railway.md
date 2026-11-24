@@ -95,6 +95,8 @@ role**. It does not change the password or the name.
   public domain**, or clients could spoof that header and bypass the limit.
 - Origin/CSRF checks are always on; `WEB_ORIGIN` and `BETTER_AUTH_URL` must match the public web domain exactly.
 - `REQUIRE_2FA=true` is enforced when `APP_ENV=production`: the API refuses to start otherwise.
+- The `api` and `workers` images set `NODE_ENV=production`, so they refuse to start unless `APP_ENV` is explicitly
+  `staging` or `production`.
 
 ## Worker behaviour
 

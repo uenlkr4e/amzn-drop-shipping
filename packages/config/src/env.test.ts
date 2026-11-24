@@ -78,3 +78,43 @@ describe('parseEnv(workerEnvSchema)', () => {
     expect(call).toThrow(/WORKER_GROUPS/);
   });
 });
+
+describe('APP_ENV in production images (NODE_ENV=production)', () => {
+  const validWorker = {
+    DATABASE_URL: validApi.DATABASE_URL,
+    REDIS_URL: validApi.REDIS_URL,
+    WORKER_GROUPS: 'system',
+  };
+
+  it.each([
+    ['api', apiEnvSchema, validApi],
+    ['workers', workerEnvSchema, validWorker],
+  ] as const)('%s: refuses a missing APP_ENV', (_name, schema, base) => {
+    const { APP_ENV: _appEnv, ...rest } = { APP_ENV: undefined, ...base };
+    const call = () => parseEnv(schema, { ...rest, NODE_ENV: 'production' });
+    expect(call).toThrow(EnvValidationError);
+    expect(call).toThrow(/APP_ENV/);
+  });
+
+  it.each([
+    ['api', apiEnvSchema, validApi],
+    ['workers', workerEnvSchema, validWorker],
+  ] as const)('%s: refuses APP_ENV=development', (_name, schema, base) => {
+    const call = () =>
+      parseEnv(schema, { ...base, APP_ENV: 'development', NODE_ENV: 'production' });
+    expect(call).toThrow(/APP_ENV/);
+  });
+
+  it.each([
+    ['api', apiEnvSchema, validApi],
+    ['workers', workerEnvSchema, validWorker],
+  ] as const)('%s: accepts APP_ENV=staging', (_name, schema, base) => {
+    const env = parseEnv(schema, { ...base, APP_ENV: 'staging', NODE_ENV: 'production' });
+    expect(env.APP_ENV).toBe('staging');
+  });
+
+  it('does not apply outside production images', () => {
+    const { APP_ENV: _appEnv, ...rest } = validApi;
+    expect(parseEnv(apiEnvSchema, rest).APP_ENV).toBe('development');
+  });
+});

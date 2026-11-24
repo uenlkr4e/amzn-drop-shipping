@@ -8,7 +8,23 @@ const baseEnvShape = {
   DATABASE_URL: z.url(),
   REDIS_URL: z.url(),
   SENTRY_DSN: z.preprocess(emptyToUndefined, z.url().optional()),
+  /** Set to production by the Docker images; read only to guard APP_ENV below. */
+  NODE_ENV: z.string().optional(),
 };
+
+/** A production image must say which deployment it is: the development default would be wrong. */
+function requireDeployedAppEnv(
+  env: { NODE_ENV?: string; APP_ENV: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.NODE_ENV === 'production' && env.APP_ENV !== 'staging' && env.APP_ENV !== 'production') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['APP_ENV'],
+      message: 'must be set to staging or production when NODE_ENV=production',
+    });
+  }
+}
 
 export const apiEnvSchema = z
   .object({
@@ -20,6 +36,7 @@ export const apiEnvSchema = z
     REQUIRE_2FA: z.stringbool().default(true),
   })
   .superRefine((env, ctx) => {
+    requireDeployedAppEnv(env, ctx);
     if (env.APP_ENV === 'production' && !env.REQUIRE_2FA) {
       ctx.addIssue({
         code: 'custom',
@@ -29,18 +46,20 @@ export const apiEnvSchema = z
     }
   });
 
-export const workerEnvSchema = z.object({
-  ...baseEnvShape,
-  WORKER_GROUPS: z
-    .string()
-    .transform((value) =>
-      value
-        .split(',')
-        .map((group) => group.trim())
-        .filter((group) => group.length > 0),
-    )
-    .pipe(z.array(z.string()).min(1, 'must list at least one worker group')),
-});
+export const workerEnvSchema = z
+  .object({
+    ...baseEnvShape,
+    WORKER_GROUPS: z
+      .string()
+      .transform((value) =>
+        value
+          .split(',')
+          .map((group) => group.trim())
+          .filter((group) => group.length > 0),
+      )
+      .pipe(z.array(z.string()).min(1, 'must list at least one worker group')),
+  })
+  .superRefine(requireDeployedAppEnv);
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;

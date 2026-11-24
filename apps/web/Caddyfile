@@ -12,6 +12,14 @@
 :{$PORT:8080} {
 	encode zstd gzip
 
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		# Railway terminates TLS in front of Caddy; browsers only see the HTTPS origin.
+		Strict-Transport-Security "max-age=31536000"
+	}
+
 	handle /api/* {
 		reverse_proxy {$API_UPSTREAM} {
 			# Exactly one address: the API rate-limits on the first X-Forwarded-For entry.
@@ -21,7 +29,11 @@
 
 	handle {
 		root * /srv
+		# Hashed build assets never change; everything else (index.html, the SPA fallback for client
+		# routes) must be revalidated so a deploy is picked up at once.
+		@mutable not path /assets/*
 		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+		header @mutable Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
