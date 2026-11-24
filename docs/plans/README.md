@@ -16,7 +16,7 @@ learned.
 | # | Plan | Platform-plan phase | Status | Depends on |
 |---|------|---------------------|--------|------------|
 | 0 | Discovery and technical validation (non-code checklist + spike scripts) | Phase 0 | Not written | — |
-| 1 | [Platform foundation](2026-11-23-phase-1-platform-foundation.md) | Phase 1 | **Ready** | — |
+| 1 | [Platform foundation](2026-11-23-phase-1-platform-foundation.md) | Phase 1 | **Done (staging deploy pending)** | — |
 | 2 | Product research: Keepa provider, CA/MX storefront discovery, US matching, eligibility filters, research UI | Phase 2 | Not written | 1, Phase 0 Keepa findings |
 | 3 | Pricing and FX: CurrencyAPI provider, fee/tax/duty rules, rate cards, pricing engine, competitor monitoring via SP-API notifications (SQS), dry-run review UI | Phase 3 | Not written | 1, 2 |
 | 4 | Inventory and listings: stock signals and buffer rules, JSON listings feeds, Listings Restrictions checks, standing attestations, approval queue | Phase 4 | Not written | 2, 3 |
