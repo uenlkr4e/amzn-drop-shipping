@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Outlet, redirect, useRouter } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { fetchMe } from '@/lib/api';
@@ -20,9 +21,12 @@ export const Route = createFileRoute('/_authed')({
 function AuthedLayout() {
   const { me } = Route.useRouteContext();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   async function signOut() {
     await authClient.signOut();
+    // Drop cached data from the signed-out session so the next user never sees it.
+    queryClient.clear();
     await router.navigate({ to: '/login', search: { redirect: '/' } });
   }
 
