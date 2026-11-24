@@ -52,7 +52,12 @@ Create two Railway environments: `staging` and `production`. Do every step below
    ```text
    PORT=8080
    API_UPSTREAM=${{api.RAILWAY_PRIVATE_DOMAIN}}:3000
+   TRUSTED_PROXIES=<optional, space-separated CIDRs; default private_ranges>
    ```
+
+   `TRUSTED_PROXIES` lists the peers Caddy accepts `X-Forwarded-For` from (Railway's edge proxy). Caddy reads that
+   header right to left (`trusted_proxies_strict`), takes the first untrusted address as the client IP and sends the
+   API exactly that one address. Leave it unset unless the first-deploy check in step 9 fails.
 
 5. Generate a public domain (or attach a custom domain) for `web` only. `api` and `workers` stay private.
 6. Deploy. The `api` pre-deploy command applies migrations before the new version starts.
@@ -62,6 +67,16 @@ Create two Railway environments: `staging` and `production`. Do every step below
    NEW_USER_PASSWORD='<strong password>' node apps/api/dist/scripts/create-user.js --email you@example.com --name "Your Name" --role admin
    ```
 8. Sign in at the web domain and complete 2FA setup.
+9. **Check the client IP the API sees** (do this on the first deploy of each environment). After signing in, run
+   against the environment's Postgres (`railway connect Postgres`):
+   ```sql
+   SELECT metadata->>'ipAddress' AS ip, occurred_at FROM audit_logs
+   WHERE action = 'auth.session_created' ORDER BY occurred_at DESC LIMIT 1;
+   ```
+   `ip` must be your own public IP (compare with https://ifconfig.me). If it is a Railway edge address instead, Caddy
+   does not trust the edge proxy: every user then shares one rate-limit bucket. Set `TRUSTED_PROXIES` on `web` to
+   Railway's edge range (the address you saw belongs to it; use Railway's published range), redeploy `web`, and
+   repeat this check.
 
 ## User management is CLI-only
 
@@ -74,8 +89,10 @@ role**. It does not change the password or the name.
 - **Run exactly one `api` replica** until shared rate-limit storage is added. Sign-in and TOTP verification are
   limited to 5 per minute per IP by Better Auth's **in-memory** limiter (active whenever `APP_ENV` is not `test`),
   so multiple replicas would each keep separate counters.
-- The limiter keys on `X-Forwarded-For`, which Caddy (`web`) sets. The `api` service must stay private: **never give
-  `api` a public domain**, or clients could spoof that header and bypass the limit.
+- The limiter keys on `X-Forwarded-For`, which Caddy (`web`) overwrites with a single client IP. That IP is only the
+  real user's if Caddy trusts Railway's edge proxy (`TRUSTED_PROXIES`, verified by first-time setup step 9); otherwise
+  the limit is per edge address, shared by all users. The `api` service must stay private: **never give `api` a
+  public domain**, or clients could spoof that header and bypass the limit.
 - Origin/CSRF checks are always on; `WEB_ORIGIN` and `BETTER_AUTH_URL` must match the public web domain exactly.
 - `REQUIRE_2FA=true` is enforced when `APP_ENV=production`: the API refuses to start otherwise.
 

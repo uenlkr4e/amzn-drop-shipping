@@ -1,12 +1,22 @@
 {
 	admin off
+	servers {
+		# Only these peers may supply X-Forwarded-For. On Railway that is the edge proxy; set
+		# TRUSTED_PROXIES to its range if it is not covered by private_ranges.
+		trusted_proxies static {$TRUSTED_PROXIES:private_ranges}
+		# Read X-Forwarded-For right to left: a client cannot prepend a spoofed address.
+		trusted_proxies_strict
+	}
 }
 
 :{$PORT:8080} {
 	encode zstd gzip
 
 	handle /api/* {
-		reverse_proxy {$API_UPSTREAM}
+		reverse_proxy {$API_UPSTREAM} {
+			# Exactly one address: the API rate-limits on the first X-Forwarded-For entry.
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 
 	handle {
