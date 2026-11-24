@@ -26,6 +26,12 @@ export interface WorkerIdentity {
 
 export type { Logger };
 
+export function createWorkerLogger(env: WorkerEnv): Logger {
+  return pino(
+    createLoggerOptions({ service: 'workers', level: env.LOG_LEVEL, appEnv: env.APP_ENV }),
+  );
+}
+
 @Global()
 @Module({})
 export class WorkerConfigModule implements OnApplicationShutdown {
@@ -37,9 +43,7 @@ export class WorkerConfigModule implements OnApplicationShutdown {
       startedAt: new Date(),
       groups,
     };
-    const logger = pino(
-      createLoggerOptions({ service: 'workers', level: env.LOG_LEVEL, appEnv: env.APP_ENV }),
-    );
+    const logger = createWorkerLogger(env);
     return {
       module: WorkerConfigModule,
       providers: [

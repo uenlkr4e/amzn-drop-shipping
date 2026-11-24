@@ -3,6 +3,7 @@ import { DatabaseModule, RedisModule } from '@dropship/nest-common';
 import { type DynamicModule, Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
+import type { Logger } from 'pino';
 import { AuthModule } from './auth/auth.module';
 import { ApiConfigModule } from './config/api-config.module';
 import { HealthModule } from './health/health.module';
@@ -10,12 +11,12 @@ import { OpsModule } from './ops/ops.module';
 
 @Module({})
 export class AppModule {
-  static forRoot(env: ApiEnv): DynamicModule {
+  static forRoot(env: ApiEnv, logger: Logger): DynamicModule {
     return {
       module: AppModule,
       imports: [
         SentryModule.forRoot(),
-        ApiConfigModule.forRoot(env),
+        ApiConfigModule.forRoot(env, logger),
         DatabaseModule.forRoot(env.DATABASE_URL),
         RedisModule.forRoot(env.REDIS_URL),
         HealthModule,

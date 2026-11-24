@@ -1,10 +1,10 @@
 import './instrument';
 import 'reflect-metadata';
 import { parseEnv, workerEnvSchema } from '@dropship/config';
-import { createLoggerOptions } from '@dropship/observability';
+import { PinoLoggerService } from '@dropship/nest-common';
 import { NestFactory } from '@nestjs/core';
-import pino from 'pino';
 import {
+  createWorkerLogger,
   type Logger,
   WORKER_IDENTITY,
   WORKER_LOGGER,
@@ -17,17 +17,18 @@ const BOOT_TIMEOUT_MS = 60_000;
 
 async function bootstrap() {
   const env = parseEnv(workerEnvSchema);
+  const logger = createWorkerLogger(env);
   const bootTimer = setTimeout(() => {
-    pino(
-      createLoggerOptions({ service: 'workers', level: env.LOG_LEVEL, appEnv: env.APP_ENV }),
-    ).error(
+    logger.error(
       { timeoutMs: BOOT_TIMEOUT_MS },
       'worker did not finish starting in time (is Redis reachable?); exiting',
     );
     process.exit(1);
   }, BOOT_TIMEOUT_MS);
   // createApplicationContext runs init() (and its bootstrap hooks) before resolving.
-  const app = await NestFactory.createApplicationContext(WorkersModule.forRoot(env));
+  const app = await NestFactory.createApplicationContext(WorkersModule.forRoot(env), {
+    logger: env.LOG_LEVEL === 'silent' ? false : new PinoLoggerService(logger),
+  });
   clearTimeout(bootTimer);
   // SIGTERM from Railway closes BullMQ workers (finishing active jobs) and the DB pool.
   app.enableShutdownHooks();

@@ -2,6 +2,8 @@ import { authSchema, type Database, recordAudit } from '@dropship/database';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin, twoFactor } from 'better-auth/plugins';
+import type { Logger } from 'pino';
+import { betterAuthLogger } from './better-auth-logger';
 
 export interface CreateAuthOptions {
   db: Database;
@@ -12,6 +14,8 @@ export interface CreateAuthOptions {
   allowSignUp?: boolean;
   /** HTTP rate limiting. Defaults to on; tests and the create-user script turn it off. */
   rateLimit?: boolean;
+  /** Better Auth's messages go here as JSON. Without it they print as console text (scripts). */
+  logger?: Logger;
 }
 
 export function createAuth(options: CreateAuthOptions) {
@@ -21,6 +25,7 @@ export function createAuth(options: CreateAuthOptions) {
     baseURL: options.baseURL,
     basePath: '/api/auth',
     trustedOrigins: options.trustedOrigins,
+    logger: options.logger ? betterAuthLogger(options.logger) : undefined,
     database: drizzleAdapter(options.db, { provider: 'pg', schema: authSchema }),
     advanced: {
       // Explicit so the checks never depend on env vars: Better Auth otherwise skips
