@@ -5,7 +5,7 @@ WORKDIR /app
 
 FROM base AS pruner
 COPY . .
-RUN pnpm dlx turbo@^2 prune @dropship/web --docker
+RUN pnpm dlx turbo@2.11.13 prune @dropship/web --docker
 
 FROM base AS builder
 COPY --from=pruner /app/out/json/ .
